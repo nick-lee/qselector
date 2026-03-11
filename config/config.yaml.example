@@ -1,0 +1,58 @@
+# Qlib 数据配置
+qlib:
+  provider_uri: "path_to_qlib_data"  # 请根据实际情况修改
+  region: "cn"
+  quiet: false                     # 是否屏蔽底层C++警告（临时重定向stderr）
+
+# 股票池配置
+stock_pool:
+  mode: "index"                    # index / all / main / top_n / list
+  indexs_name: "csi300"              # mode=index时有效
+  top_n: 1000                       # mode=top_n时有效
+  source: "main"                    # top_n时可选 main 或 all
+  list_file: "stockpools/my_stocks.txt"  # mode=list时有效（相对于项目根目录）
+
+# 输出配置
+output:
+  dir: "./outputs"
+  format: "csv"                     # csv 或 txt
+  prefix: ""                         # 输出文件名前缀（可选）
+
+# 日志配置
+logging:
+  level: "INFO"                      # 控制台日志级别
+  file: "logs/selector.log"           # 日志文件路径（留空则不写文件）
+
+  # 策略参数配置（可选）
+policy_params:
+  momentum_breakout:
+    lookback: 120          # 改为120日突破，默认为250
+  golden_cross:
+    short: 10              # 短期均线周期
+    long: 30               # 长期均线周期
+  momentum_trend:
+    lookback: 60          # 过去60日涨幅
+    min_return: 0.05       # 要求涨幅 > 0（可改为 0.05 表示 >5%）
+  rsi_oversold:
+    period: 14          # RSI周期, default 14days
+    threshold: 30       # 超卖阈值    
+  volume_surge:
+    lookback: 20        #过去20天
+    threshold: 2.0      # 比过去20天VOL放量2.0倍 
+  bb_breakout:
+    period: 20          # 布林带周期
+    width: 2.0          # 标准差倍数
+    direction: "upper"  # 突破上轨（可选 "lower" 表示跌破下轨）    
+  macd_golden_cross:
+    fast_period: 12      # 快线周期
+    slow_period: 26      # 慢线周期
+    signal_period: 9     # 信号线周期（暂未使用）    
+  williams_oversold:
+    period: 14          # 计算周期（与RSI常用周期一致）
+    threshold: -80      # 超卖阈值（可设为 -85 或 -75 调整敏感度）    
+  volume_at_bottom:
+    lookback: 60                # 低点回看周期
+    volume_lookback: 20          # 均量周期
+    volume_threshold: 2.0        # 量比 > 2
+    low_distance: 0.2            # 距离60日低点涨幅小于20%
+    # high_distance: 0.3         # 可选：距离60日高点还有30%以上空间    

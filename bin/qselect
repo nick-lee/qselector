@@ -1,0 +1,178 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+QLib 选股命令行工具
+"""
+import os
+import sys
+import argparse
+import logging
+import yaml
+from datetime import datetime
+from colorama import init, Fore, Style
+
+# 添加项目根目录到 sys.path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from core import qlib_init, data_loader, selector, date_utils
+from policies.base import BasePolicy
+
+# 初始化 colorama（Windows 下必须）
+init(autoreset=True)
+
+class ColoredFormatter(logging.Formatter):
+    """为不同日志级别添加颜色的格式化器（仅用于控制台）"""
+    COLORS = {
+        logging.DEBUG: Fore.CYAN,
+        logging.INFO: Fore.GREEN,
+        logging.WARNING: Fore.YELLOW,
+        logging.ERROR: Fore.RED,
+        logging.CRITICAL: Fore.RED + Style.BRIGHT,
+    }
+
+    def format(self, record):
+        log_message = super().format(record)
+        color = self.COLORS.get(record.levelno, '')
+        if color:
+            log_message = color + log_message + Style.RESET_ALL
+        return log_message
+
+def setup_logging(config):
+    """配置日志：控制台彩色，文件无颜色"""
+    log_level = getattr(logging, config['logging'].get('level', 'INFO'))
+    log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    handlers = []
+
+    # 控制台处理器（带颜色）
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(ColoredFormatter(log_format))
+    handlers.append(console_handler)
+
+    # 文件处理器（无颜色）
+    log_file = config['logging'].get('file')
+    if log_file:
+        os.makedirs(os.path.dirname(log_file), exist_ok=True)
+        file_handler = logging.FileHandler(log_file, encoding='utf-8')
+        file_handler.setFormatter(logging.Formatter(log_format))
+        handlers.append(file_handler)
+
+    logging.basicConfig(level=log_level, handlers=handlers)
+
+def load_policy(policy_name, config):
+    """动态导入策略模块，返回策略实例（传入配置中的参数）"""
+    try:
+        module = __import__(f'policies.{policy_name}', fromlist=['Policy'])
+        policy_class = getattr(module, 'Policy')
+        if not issubclass(policy_class, BasePolicy):
+            raise TypeError(f"Policy class in {policy_name} must inherit from BasePolicy")
+
+        # 获取策略参数（如果配置中存在）
+        params = config.get('policy_params', {}).get(policy_name, {})
+        #print(f"DEBUG: params for {policy_name} = {params}")   # 添加调试输出
+        return policy_class(params=params)
+    except (ImportError, AttributeError, TypeError) as e:
+        raise ImportError(f"Failed to load policy '{policy_name}': {e}")
+
+def main():
+    parser = argparse.ArgumentParser(description='QLib 选股工具')
+    parser.add_argument('-p', '--policy', required=True, help='策略名称')
+    parser.add_argument('-c', '--config', default='config/config.yaml', help='配置文件路径')
+    parser.add_argument('-o', '--output', help='输出文件路径（默认自动生成）')
+    parser.add_argument('-d', '--date', help='选股日期 (YYYY-MM-DD)，默认使用今天')
+    parser.add_argument('--pool-mode', choices=['index', 'all', 'main', 'top_n', 'list'], help='临时覆盖股票池模式')
+    parser.add_argument('--pool-name', help='指数名称（当pool-mode=index时）')
+    parser.add_argument('--top-n', type=int, help='取前N只（当pool-mode=top_n时）')
+    parser.add_argument('--list-file', help='自定义股票池文件路径（当pool-mode=list时）')
+    parser.add_argument('-v', '--verbose', action='store_true', help='详细输出')
+    parser.add_argument('-q', '--quiet', action='store_true', help='静默模式（屏蔽C++警告）')
+    parser.add_argument('--version', action='version', version='qlib_selector 0.1.0')
+    args = parser.parse_args()
+
+    # 加载配置文件
+    with open(args.config, 'r', encoding='utf-8') as f:
+        config = yaml.safe_load(f)
+
+    # 命令行覆盖配置
+    if args.quiet:
+        config['qlib']['quiet'] = True
+    if args.verbose:
+        config['logging']['level'] = 'DEBUG'
+    if args.pool_mode:
+        config['stock_pool']['mode'] = args.pool_mode
+    if args.pool_name:
+        config['stock_pool']['index_name'] = args.pool_name
+    if args.top_n:
+        config['stock_pool']['top_n'] = args.top_n
+    if args.list_file:
+        config['stock_pool']['list_file'] = args.list_file
+
+    # 设置日志
+    setup_logging(config)
+
+    # 初始化 Qlib
+    qlib_init.init(config)
+
+    # 确定选股日期
+    if args.date:
+        raw_date = args.date
+    else:
+        raw_date = datetime.now().strftime('%Y-%m-%d')
+        logging.info(f"No date specified, using today's date: {raw_date}")
+
+    # 验证日期并调整为有效交易日
+    date = date_utils.validate_date(raw_date)
+    date_utils.check_data_freshness(date)
+
+    # 加载股票池
+    stock_list = data_loader.load_stock_pool(config)
+
+    # 加载策略
+    policy = load_policy(args.policy,config)
+
+    # 执行选股
+    result_df = selector.select_stocks(policy, stock_list, date)
+
+    # 确定输出路径
+    if args.output:
+        output_path = args.output
+    else:
+        os.makedirs(config['output']['dir'], exist_ok=True)
+        fmt = config['output']['format']
+        prefix = config['output'].get('prefix', '')
+        # 加入时间戳（精确到秒），确保文件名唯一
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"{prefix}{date}-{policy.get_name()}-{timestamp}.{fmt}"
+        output_path = os.path.join(config['output']['dir'], filename)
+
+    # 输出结果
+    if len(result_df) == 0:
+        logging.warning("No stocks selected, output file will contain only header.")
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(f"# policy: {policy.get_name()}\n")
+            f.write(f"# run_date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")  # 添加运行日期
+            f.write(f"# date: {date}\n")
+            f.write(f"# total_stocks: {len(stock_list)}\n")
+            f.write(f"# selected: 0\n")
+        logging.info(f"Empty result written to {output_path}")
+    else:
+        if config['output']['format'] == 'csv':
+            with open(output_path, 'w', encoding='utf-8') as f:
+                f.write(f"# policy: {policy.get_name()}\n")
+                f.write(f"# run_date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")  # 添加运行日期
+                f.write(f"# date: {date}\n")
+                f.write(f"# total_stocks: {len(stock_list)}\n")
+                f.write(f"# selected: {len(result_df)}\n")
+            cols = ['stock'] + [c for c in result_df.columns if c != 'stock']
+            result_df[cols].to_csv(output_path, mode='a', index=False, encoding='utf-8')
+        else:  # txt
+            with open(output_path, 'w', encoding='utf-8') as f:
+                f.write(f"# policy: {policy.get_name()}\n")
+                f.write(f"# date: {date}\n")
+                f.write(f"# total_stocks: {len(stock_list)}\n")
+                f.write(f"# selected: {len(result_df)}\n")
+                for code in result_df['stock']:
+                    f.write(f"{code}\n")
+        logging.info(f"Result written to {output_path}")
+
+if __name__ == '__main__':
+    main()
