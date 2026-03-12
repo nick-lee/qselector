@@ -86,6 +86,7 @@ def main():
     parser.add_argument('-v', '--verbose', action='store_true', help='详细输出')
     parser.add_argument('-q', '--quiet', action='store_true', help='静默模式（屏蔽C++警告）')
     parser.add_argument('--version', action='version', version='qlib_selector 0.1.0')
+    parser.add_argument('--outputpool',action='store_true', help='输出成stockpool格式')
     args = parser.parse_args()
 
     # 加载配置文件
@@ -164,6 +165,25 @@ def main():
                 f.write(f"# selected: {len(result_df)}\n")
             cols = ['stock'] + [c for c in result_df.columns if c != 'stock']
             result_df[cols].to_csv(output_path, mode='a', index=False, encoding='utf-8')
+
+        # 输出股票池文件（如果指定了 --outputpool）
+        if args.outputpool and len(result_df) > 0:
+            # 生成股票池文件名（与CSV同路径，扩展名改为.txt）
+            pool_path = output_path.replace('.csv', '.txt').replace('.txt', '_pool.txt')
+            
+            with open(pool_path, 'w', encoding='utf-8') as f:
+                f.write(f"# 从策略 {policy.get_name()} 生成的股票池\n")
+                f.write(f"# 生成日期: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write(f"# 选股日期: {date}\n")
+                f.write(f"# 原始股票池: {config['stock_pool'].get('mode', 'unknown')}\n")
+                f.write(f"# 选股数量: {len(result_df)}\n")
+                f.write(f"# 格式: 每行一个股票代码，可直接用于后续筛选\n\n")
+                
+                # 按股票代码排序输出
+                for code in sorted(result_df['stock'].tolist()):
+                    f.write(f"{code}\n")
+            
+            logging.info(f"股票池文件输出到: {pool_path}")            
         else:  # txt
             with open(output_path, 'w', encoding='utf-8') as f:
                 f.write(f"# policy: {policy.get_name()}\n")
