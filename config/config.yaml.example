@@ -56,3 +56,12 @@ policy_params:
     volume_threshold: 2.0        # 量比 > 2
     low_distance: 0.2            # 距离60日低点涨幅小于20%
     # high_distance: 0.3         # 可选：距离60日高点还有30%以上空间    
+  bottom_reversal:
+    bottom_period: 60           # 底部观察期60日
+    max_volatility: 0.3         # 最大波动20%
+    volume_increase: 1.05        # 放量20%
+    ma_convergence: 0.05        # 均线收敛5%
+    max_price_ratio: 1.2        # 股价低于年线10%
+    min_days_since_low: 20      # 脱离最低点20日以上
+    use_score_fallback: false      # 是否启用得分制降级
+    min_score: 3                   # 得分阈值   
