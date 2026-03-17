@@ -1,6 +1,6 @@
 # Qlib 数据配置
 qlib:
-  provider_uri: "path_to_qlib_data"  # 请根据实际情况修改
+  provider_uri: "D:/workspace/workspace/qlib/qlib_data/cn_data_update"  # 请根据实际情况修改
   region: "cn"
   quiet: false                     # 是否屏蔽底层C++警告（临时重定向stderr）
 
@@ -25,6 +25,7 @@ logging:
 
   # 策略参数配置（可选）
 policy_params:
+  # public policies
   momentum_breakout:
     lookback: 120          # 改为120日突破，默认为250
   golden_cross:
@@ -56,6 +57,7 @@ policy_params:
     volume_threshold: 2.0        # 量比 > 2
     low_distance: 0.2            # 距离60日低点涨幅小于20%
     # high_distance: 0.3         # 可选：距离60日高点还有30%以上空间    
+  # private polilcies  
   bottom_reversal:
     bottom_period: 60           # 底部观察期60日
     max_volatility: 0.3         # 最大波动20%
@@ -64,4 +66,30 @@ policy_params:
     max_price_ratio: 1.2        # 股价低于年线10%
     min_days_since_low: 20      # 脱离最低点20日以上
     use_score_fallback: false      # 是否启用得分制降级
-    min_score: 3                   # 得分阈值   
+    min_score: 3                   # 得分阈值    
+  # 严格版（追求高确定性）
+  w_bottom:
+    bottom_tolerance: 0.02
+    volume_shrink: 0.7
+    volume_surge: 1.5
+    drop_threshold: -0.10
+    min_gap: 5
+    verbose: false
+  
+  # 平衡版（推荐）
+  w_bottom_balance:
+    bottom_tolerance: 0.05
+    volume_shrink: 0.8
+    volume_surge: 1.3
+    drop_threshold: -0.05
+    min_gap: 3
+    verbose: false
+  
+  # 宽松版（捕捉更多机会）
+  w_bottom_loose:
+    bottom_tolerance: 0.08
+    volume_shrink: 0.9
+    volume_surge: 1.2
+    drop_threshold: 0.0
+    min_gap: 2
+    verbose: false
